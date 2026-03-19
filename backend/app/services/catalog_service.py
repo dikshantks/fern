@@ -46,13 +46,71 @@ class CatalogService:
         # Build catalog properties based on type
         catalog_props = {"type": catalog_type.value, **properties}
         
+        # For Glue catalogs, normalize boto3-style properties to PyIceberg properties
+        if catalog_type == CatalogType.GLUE:
+            # Normalize boto3 parameter names to PyIceberg property names
+            property_mapping = {
+                "region_name": "client.region",
+                "aws_access_key_id": "client.access-key-id",
+                "aws_secret_access_key": "client.secret-access-key",
+                "aws_session_token": "client.session-token",
+                "profile_name": "client.profile-name",
+            }
+            
+            for boto3_key, pyiceberg_key in property_mapping.items():
+                if boto3_key in catalog_props and pyiceberg_key not in catalog_props:
+                    catalog_props[pyiceberg_key] = catalog_props.pop(boto3_key)
+            
+            # Ensure S3 region is set for S3 FileIO (required for PyArrow S3 client)
+            if "s3.region" not in catalog_props:
+                # Try to infer from client.region
+                if "client.region" in catalog_props:
+                    catalog_props["s3.region"] = catalog_props["client.region"]
+                    print(f"ℹ️  Auto-configured s3.region={catalog_props['s3.region']} from client.region")
+                else:
+                    print("⚠️  Warning: Missing 's3.region' property. S3 access may fail with ACCESS_DENIED.")
+            
+            # Ensure S3 credentials are set for S3 FileIO if client credentials exist
+            if "client.access-key-id" in catalog_props and "s3.access-key-id" not in catalog_props:
+                catalog_props["s3.access-key-id"] = catalog_props["client.access-key-id"]
+                print("ℹ️  Auto-configured s3.access-key-id from client.access-key-id")
+            
+            if "client.secret-access-key" in catalog_props and "s3.secret-access-key" not in catalog_props:
+                catalog_props["s3.secret-access-key"] = catalog_props["client.secret-access-key"]
+                print("ℹ️  Auto-configured s3.secret-access-key from client.secret-access-key")
+            
+            if "client.session-token" in catalog_props and "s3.session-token" not in catalog_props:
+                catalog_props["s3.session-token"] = catalog_props["client.session-token"]
+                print("ℹ️  Auto-configured s3.session-token from client.session-token")
+        
         # Add S3 path-style access for MinIO compatibility
         if "s3.endpoint" in properties and "s3.path-style-access" not in properties:
             catalog_props["s3.path-style-access"] = "true"
         
+        # #region agent log
+        try:
+            import json, time
+            from pathlib import Path
+            _log = Path(__file__).resolve().parent.parent / "debug-a776e8.log"
+            with open(_log, "a") as _f:
+                _f.write(json.dumps({"sessionId":"a776e8","location":"catalog_service.py:register_catalog","message":"catalog_props before load_catalog","data":{"has_s3_region":"s3.region" in catalog_props,"has_s3_access_key":"s3.access-key-id" in catalog_props,"has_s3_secret":"s3.secret-access-key" in catalog_props,"has_client_region":"client.region" in catalog_props,"catalog_props_keys":[k for k in catalog_props if "key" not in k.lower() and "secret" not in k.lower()]},"timestamp":int(time.time()*1000),"hypothesisId":"H1,H4"}) + "\n")
+        except Exception: pass
+        # #endregion
+        
         try:
             # Load the catalog using pyiceberg
             catalog = load_catalog(name, **catalog_props)
+            
+            # #region agent log
+            try:
+                import json, time
+                from pathlib import Path
+                _p = getattr(catalog, "properties", {})
+                _log = Path(__file__).resolve().parent.parent / "debug-a776e8.log"
+                with open(_log, "a") as _f:
+                    _f.write(json.dumps({"sessionId":"a776e8","location":"catalog_service.py:after_load_catalog","message":"catalog.properties after load","data":{"has_s3_region":"s3.region" in _p,"has_s3_access_key":"s3.access-key-id" in _p,"has_s3_secret":"s3.secret-access-key" in _p},"timestamp":int(time.time()*1000),"hypothesisId":"H2,H3"}) + "\n")
+            except Exception: pass
+            # #endregion
             
             # Store catalog and config
             self._catalogs[name] = catalog

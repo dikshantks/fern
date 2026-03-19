@@ -138,7 +138,7 @@ function ManifestNode({
   selected,
 }: NodeProps<{
   manifest: ManifestInfoWithEntries;
-  snapshotIds: number[];
+  snapshotIds: string[];
 }>) {
   const { manifest, snapshotIds } = data;
   const isData = manifest.content === 'data';
@@ -347,7 +347,7 @@ export function SnapshotDAG({
     });
 
     // Snapshot lineage edges
-    graph.edges.forEach(([source, target]: [number, number]) => {
+    graph.edges.forEach(([source, target]: [string, string]) => {
       edges.push({
         id: `lineage-${source}-${target}`,
         source: `snap-${source}`,
@@ -433,7 +433,7 @@ export function SnapshotDAG({
       if (node.type === 'manifest') return;
 
       const snapId = node.id.startsWith('snap-')
-        ? parseInt(node.id.replace('snap-', ''), 10)
+        ? node.id.replace('snap-', '')
         : null;
       const snapshot = graph?.nodes.find((s) => s.snapshot_id === snapId);
       if (snapshot) {
@@ -445,10 +445,10 @@ export function SnapshotDAG({
 
           if (newSelected.length === 2 && onCompareSelect) {
             const snap1Id = newSelected[0].startsWith('snap-')
-              ? parseInt(newSelected[0].replace('snap-', ''), 10)
+              ? newSelected[0].replace('snap-', '')
               : null;
             const snap2Id = newSelected[1].startsWith('snap-')
-              ? parseInt(newSelected[1].replace('snap-', ''), 10)
+              ? newSelected[1].replace('snap-', '')
               : null;
             const snap1 = graph?.nodes.find((s) => s.snapshot_id === snap1Id);
             const snap2 = graph?.nodes.find((s) => s.snapshot_id === snap2Id);

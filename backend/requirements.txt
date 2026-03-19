@@ -8,7 +8,7 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 
 # Apache Iceberg (with Hive and Glue support)
-pyiceberg[hive,glue,s3fs]>=0.6.0
+pyiceberg[hive,glue,s3fs]
 
 
 # AWS/Storage

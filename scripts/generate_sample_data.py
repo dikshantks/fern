@@ -3,7 +3,8 @@
 Generate sample Iceberg tables with multiple snapshots for testing.
 
 Usage:
-    python generate_sample_data.py
+    source firn_venv/bin/activate
+    python scripts/generate_sample_data.py
 
 Prerequisites:
     - MinIO running at localhost:9000
@@ -16,6 +17,7 @@ from datetime import datetime, timedelta
 
 import pyarrow as pa
 from pyiceberg.catalog import load_catalog
+from pyiceberg.expressions import EqualTo, In, LessThan
 from pyiceberg.schema import Schema
 from pyiceberg.types import (
     NestedField,
@@ -141,6 +143,54 @@ def create_users_table(catalog):
     return table
 
 
+def create_mor_orders_table(catalog):
+    """
+    Create a Merge-on-Read (MOR) orders table with identifier field for equality deletes.
+
+    NOTE: PyIceberg does NOT yet support MOR for deletes. It always falls back to
+    copy-on-write (rewriting data files). You will NOT see delete.parquet files
+    in MinIO when using PyIceberg's table.delete(). To get actual delete files
+    (equality/positional), use Apache Spark or Flink with Iceberg instead.
+    """
+    namespace = "demo"
+    table_name = "orders"
+
+    create_namespace(catalog, namespace)
+
+    # Schema with id as identifier field (for equality deletes)
+    schema = Schema(
+        NestedField(1, "id", LongType(), required=True),
+        NestedField(2, "order_date", TimestampType(), required=True),
+        NestedField(3, "customer_id", LongType(), required=True),
+        NestedField(4, "product_id", LongType(), required=True),
+        NestedField(5, "quantity", IntegerType(), required=True),
+        NestedField(6, "amount", DoubleType(), required=True),
+        NestedField(7, "status", StringType(), required=True),
+        identifier_field_ids=[1],  # id is primary key for equality deletes
+    )
+
+    # Drop table if exists
+    try:
+        catalog.drop_table((namespace, table_name))
+        print(f"Dropped existing table: {namespace}.{table_name}")
+    except Exception:
+        pass
+
+    # Create MOR table
+    table = catalog.create_table(
+        identifier=(namespace, table_name),
+        schema=schema,
+        location=f"s3a://warehouse/{namespace}/{table_name}",
+        properties={
+            "write.delete.mode": "merge-on-read",
+            "write.update.mode": "merge-on-read",
+        },
+    )
+
+    print(f"Created MOR table: {namespace}.{table_name}")
+    return table
+
+
 def generate_sales_data(num_records: int, start_date: datetime) -> pa.Table:
     """Generate sample sales data."""
     categories = ["Electronics", "Clothing", "Food", "Books", "Toys", "Home", "Sports"]
@@ -244,6 +294,53 @@ def generate_users_data(num_records: int, start_date: datetime) -> pa.Table:
     return pa.Table.from_pydict(data, schema=arrow_schema)
 
 
+def generate_orders_data(
+    num_records: int,
+    start_date: datetime,
+    start_id: int = 1,
+    statuses: list[str] | None = None,
+) -> pa.Table:
+    """Generate sample orders data for the MOR table."""
+    if statuses is None:
+        statuses = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]
+
+    data = {
+        "id": [],
+        "order_date": [],
+        "customer_id": [],
+        "product_id": [],
+        "quantity": [],
+        "amount": [],
+        "status": [],
+    }
+
+    for i in range(num_records):
+        data["id"].append(start_id + i)
+        data["order_date"].append(
+            start_date
+            + timedelta(
+                days=random.randint(0, 30),
+                hours=random.randint(0, 23),
+            )
+        )
+        data["customer_id"].append(random.randint(1, 5000))
+        data["product_id"].append(random.randint(100, 999))
+        data["quantity"].append(random.randint(1, 10))
+        data["amount"].append(round(random.uniform(10, 500), 2))
+        data["status"].append(random.choice(statuses))
+
+    arrow_schema = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("order_date", pa.timestamp("us"), nullable=False),
+        pa.field("customer_id", pa.int64(), nullable=False),
+        pa.field("product_id", pa.int64(), nullable=False),
+        pa.field("quantity", pa.int32(), nullable=False),
+        pa.field("amount", pa.float64(), nullable=False),
+        pa.field("status", pa.string(), nullable=False),
+    ])
+    return pa.Table.from_pydict(data, schema=arrow_schema)
+
+
 def simulate_sales_operations(catalog):
     """Simulate various DML operations on the sales table."""
     table = catalog.load_table(("demo", "sales"))
@@ -314,6 +411,88 @@ def simulate_users_operations(catalog):
     return table
 
 
+def simulate_mor_operations(catalog):
+    """
+    Simulate various DML operations on the MOR orders table:
+
+    - Insert: Initial load and appends
+    - Equality delete: Delete by primary key (id IN (...))
+    - Positional delete: Delete by non-key predicate (amount < 50)
+    - Merge into: Delete + append to simulate upsert
+
+    Note: PyIceberg uses copy-on-write for all deletes (rewrites data files);
+    no delete.parquet files are created. Use Spark/Flink for actual MOR delete files.
+    """
+    table = catalog.load_table(("demo", "orders"))
+    base_date = datetime(2024, 6, 1)
+
+    print("\n--- Simulating MOR Orders Table Operations ---")
+
+    # Operation 1: Initial insert
+    print("\n[1/6] Initial insert (100 records)...")
+    data1 = generate_orders_data(100, base_date, start_id=1)
+    table.append(data1)
+    print(f"    Snapshot ID: {table.current_snapshot().snapshot_id}")
+
+    # Operation 2: Equality delete (delete by primary key - id)
+    # Uses id IN (...) - produces equality delete files when id is identifier
+    print("\n[2/6] Equality delete: DELETE WHERE id IN (5, 10, 15, 20, 25)...")
+    table.delete(delete_filter=In("id", [5, 10, 15, 20, 25]))
+    print(f"    Snapshot ID: {table.current_snapshot().snapshot_id}")
+
+    # Operation 3: Positional delete (delete by non-key predicate)
+    # amount < 50 requires scanning files - typically produces positional delete files
+    print("\n[3/6] Positional delete: DELETE WHERE amount < 50...")
+    table.delete(delete_filter=LessThan("amount", 50))
+    print(f"    Snapshot ID: {table.current_snapshot().snapshot_id}")
+
+    # Operation 4: Another insert (new orders)
+    print("\n[4/6] Append new orders (50 records)...")
+    data4 = generate_orders_data(50, base_date + timedelta(days=7), start_id=101)
+    table.append(data4)
+    print(f"    Snapshot ID: {table.current_snapshot().snapshot_id}")
+
+    # Operation 5: Merge into simulation
+    # Delete existing rows by id, then append "updated" versions
+    print("\n[5/6] Merge into: delete rows 30, 40, 50 then insert updated versions...")
+    table.delete(delete_filter=In("id", [30, 40, 50]))
+    merge_data = pa.Table.from_pydict(
+        {
+            "id": [30, 40, 50],
+            "order_date": [
+                base_date + timedelta(days=10),
+                base_date + timedelta(days=11),
+                base_date + timedelta(days=12),
+            ],
+            "customer_id": [1001, 1002, 1003],
+            "product_id": [201, 202, 203],
+            "quantity": [2, 3, 1],
+            "amount": [199.99, 299.99, 49.99],
+            "status": ["SHIPPED", "DELIVERED", "CONFIRMED"],
+        },
+        schema=pa.schema([
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("order_date", pa.timestamp("us"), nullable=False),
+            pa.field("customer_id", pa.int64(), nullable=False),
+            pa.field("product_id", pa.int64(), nullable=False),
+            pa.field("quantity", pa.int32(), nullable=False),
+            pa.field("amount", pa.float64(), nullable=False),
+            pa.field("status", pa.string(), nullable=False),
+        ]),
+    )
+    table.append(merge_data)
+    print(f"    Snapshot ID: {table.current_snapshot().snapshot_id}")
+
+    # Operation 6: Delete by status (equality on non-identifier column - positional)
+    # status is not in identifier_field_ids, so this produces positional delete files
+    print("\n[6/6] Positional delete: DELETE WHERE status = 'CANCELLED'...")
+    table.delete(delete_filter=EqualTo("status", "CANCELLED"))
+    print(f"    Snapshot ID: {table.current_snapshot().snapshot_id}")
+
+    print(f"\nOrders (MOR) table now has {len(list(table.snapshots()))} snapshots")
+    return table
+
+
 def main():
     """Main function to generate sample data."""
     print("=" * 60)
@@ -326,10 +505,12 @@ def main():
     print("\n--- Creating Tables ---")
     create_sales_table(catalog)
     create_users_table(catalog)
-    
+    create_mor_orders_table(catalog)
+
     print("\n--- Generating Sample Data ---")
     simulate_sales_operations(catalog)
     simulate_users_operations(catalog)
+    simulate_mor_operations(catalog)
     
     print("\n" + "=" * 60)
     print("Sample data generation complete!")

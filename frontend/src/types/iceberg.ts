@@ -42,7 +42,7 @@ export interface TableInfo {
   name: string;
   location: string;
   snapshot_count: number;
-  current_snapshot_id?: number;
+  current_snapshot_id?: string;
   format_version: number;
 }
 
@@ -55,7 +55,7 @@ export interface FieldInfo {
 }
 
 export interface SchemaInfo {
-  schema_id: number;
+  schema_id: string;
   fields: FieldInfo[];
   identifier_field_ids: number[];
 }
@@ -91,8 +91,8 @@ export interface TableMetadata {
   location: string;
   format_version: number;
   table_uuid?: string;
-  current_snapshot_id?: number;
-  current_schema_id: number;
+  current_snapshot_id?: string;
+  current_schema_id: string;
   default_spec_id: number;
   default_sort_order_id: number;
   schemas: SchemaInfo[];
@@ -108,26 +108,26 @@ export interface TableMetadata {
 
 // Snapshot types
 export interface SnapshotInfo {
-  snapshot_id: number;
-  parent_snapshot_id?: number;
+  snapshot_id: string;
+  parent_snapshot_id?: string;
   timestamp_ms: number;
   timestamp: string;
   operation: string;
   summary: Record<string, unknown>;
   manifest_list_path: string;
-  schema_id?: number;
-  sequence_number?: number;
+  schema_id?: string;
+  sequence_number?: string;
 }
 
 export interface SnapshotGraph {
   nodes: SnapshotInfo[];
-  edges: [number, number][];
-  current_snapshot_id?: number;
+  edges: [string, string][];
+  current_snapshot_id?: string;
 }
 
 export interface SnapshotComparison {
-  snapshot1_id: number;
-  snapshot2_id: number;
+  snapshot1_id: string;
+  snapshot2_id: string;
   snapshot1_summary: Record<string, unknown>;
   snapshot2_summary: Record<string, unknown>;
   files_added: number;
@@ -145,9 +145,9 @@ export interface ManifestInfo {
   manifest_length: number;
   partition_spec_id: number;
   content: string;
-  sequence_number: number;
-  min_sequence_number: number;
-  added_snapshot_id: number;
+  sequence_number: string;
+  min_sequence_number: string;
+  added_snapshot_id: string;
   added_files_count: number;
   existing_files_count: number;
   deleted_files_count: number;
@@ -159,9 +159,9 @@ export interface ManifestInfo {
 
 export interface ManifestEntry {
   status: number;
-  snapshot_id?: number;
-  sequence_number?: number;
-  file_sequence_number?: number;
+  snapshot_id?: string;
+  sequence_number?: string;
+  file_sequence_number?: string;
   file_path: string;
   file_format: string;
   partition: Record<string, unknown>;
@@ -182,7 +182,7 @@ export interface ManifestInfoWithEntries extends ManifestInfo {
 }
 
 export interface SnapshotDetails {
-  snapshot_id: number;
+  snapshot_id: string;
   manifest_list_path: string;
   manifests: ManifestInfoWithEntries[];
   total_data_files: number;
@@ -192,7 +192,7 @@ export interface SnapshotDetails {
 }
 
 export interface ManifestListInfo {
-  snapshot_id: number;
+  snapshot_id: string;
   manifest_list_path: string;
   manifests: ManifestInfo[];
   total_data_files: number;
@@ -257,8 +257,8 @@ export interface DataFileSample {
 // Puffin/Statistics types
 export interface BlobMetadata {
   type: string;
-  snapshot_id: number;
-  sequence_number: number;
+  snapshot_id: string;
+  sequence_number: string;
   fields: number[];
   offset: number;
   length: number;
@@ -268,7 +268,7 @@ export interface BlobMetadata {
 
 export interface PuffinFileInfo {
   file_path: string;
-  snapshot_id: number;
+  snapshot_id: string;
   file_size_bytes: number;
   blob_count: number;
   blobs: BlobMetadata[];
@@ -287,7 +287,7 @@ export interface ColumnStatistics {
 }
 
 export interface TableStatistics {
-  snapshot_id: number;
+  snapshot_id: string;
   puffin_file_path?: string;
   column_statistics: ColumnStatistics[];
   total_record_count?: number;
@@ -313,8 +313,8 @@ export interface StorageAnalytics {
 }
 
 export interface OperationHistoryEntry {
-  snapshot_id: number;
-  parent_snapshot_id?: number;
+  snapshot_id: string;
+  parent_snapshot_id?: string;
   timestamp: string;
   timestamp_ms: number;
   operation: string;

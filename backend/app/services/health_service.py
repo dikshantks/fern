@@ -8,6 +8,7 @@ from pyiceberg.table import Table
 
 from app.models.health import (
     HealthStatus,
+    HealthThresholds,
     MaintenanceRecommendation,
     MaintenanceType,
     TableHealth,
@@ -48,6 +49,7 @@ class HealthService:
         namespace: str,
         table_name: str,
         catalog_name: str,
+        thresholds: Optional[HealthThresholds] = None,
     ) -> TableHealth:
         """Analyze health of a specific table.
         
@@ -55,17 +57,22 @@ class HealthService:
             namespace: Table namespace
             table_name: Table name
             catalog_name: Catalog name for identification
+            thresholds: Optional custom thresholds (uses defaults if not provided)
             
         Returns:
             TableHealth with metrics and recommendations
         """
         table = self.catalog.load_table((namespace, table_name))
         
+        # Use provided thresholds or defaults
+        if thresholds is None:
+            thresholds = HealthThresholds()
+        
         # Collect metrics
-        metrics = self._collect_metrics(table)
+        metrics = self._collect_metrics(table, thresholds)
         
         # Generate recommendations
-        recommendations = self._generate_recommendations(metrics, table)
+        recommendations = self._generate_recommendations(metrics, table, thresholds)
         
         # Calculate health score and status
         health_score, status = self._calculate_health(metrics, recommendations)
@@ -90,12 +97,14 @@ class HealthService:
         self,
         catalog_name: str,
         min_snapshots: Optional[int] = None,
+        thresholds: Optional[HealthThresholds] = None,
     ) -> list[TableHealth]:
         """Scan all tables in catalog for health issues.
         
         Args:
             catalog_name: Catalog name
             min_snapshots: Only include tables with >= this many snapshots
+            thresholds: Optional custom thresholds (uses defaults if not provided)
             
         Returns:
             List of table health assessments
@@ -112,6 +121,7 @@ class HealthService:
                         namespace_str,
                         table_name,
                         catalog_name,
+                        thresholds=thresholds,
                     )
                     
                     # Apply filter
@@ -124,16 +134,21 @@ class HealthService:
         
         return results
     
-    def get_health_summary(self, catalog_name: str) -> TableHealthSummary:
+    def get_health_summary(
+        self,
+        catalog_name: str,
+        thresholds: Optional[HealthThresholds] = None,
+    ) -> TableHealthSummary:
         """Get summary of health across all tables.
         
         Args:
             catalog_name: Catalog name
+            thresholds: Optional custom thresholds (uses defaults if not provided)
             
         Returns:
             Summary statistics
         """
-        all_health = self.scan_all_tables(catalog_name)
+        all_health = self.scan_all_tables(catalog_name, thresholds=thresholds)
         
         healthy = sum(1 for h in all_health if h.status == HealthStatus.HEALTHY)
         warning = sum(1 for h in all_health if h.status == HealthStatus.WARNING)
@@ -177,7 +192,7 @@ class HealthService:
             total_wasted_storage_gb=wasted_storage,
         )
     
-    def _collect_metrics(self, table: Table) -> TableHealthMetrics:
+    def _collect_metrics(self, table: Table, thresholds: Optional[HealthThresholds] = None) -> TableHealthMetrics:
         """Collect health metrics from table.
         
         Args:
@@ -222,8 +237,11 @@ class HealthService:
                 total_data_files += 1
                 total_size_bytes += file.file_size_in_bytes
                 
-                # Check if small file (< 128MB)
-                if file.file_size_in_bytes < self.SMALL_FILE_SIZE_MB * 1024 * 1024:
+                # Check if small file
+                small_file_size_bytes = (
+                    (thresholds.small_file_size_mb if thresholds else self.SMALL_FILE_SIZE_MB) * 1024 * 1024
+                )
+                if file.file_size_in_bytes < small_file_size_bytes:
                     small_files_count += 1
         except Exception as e:
             print(f"Error scanning files: {e}")
@@ -276,6 +294,7 @@ class HealthService:
         self,
         metrics: TableHealthMetrics,
         table: Table,
+        thresholds: Optional[HealthThresholds] = None,
     ) -> list[MaintenanceRecommendation]:
         """Generate maintenance recommendations based on metrics.
         
@@ -288,23 +307,27 @@ class HealthService:
         """
         recommendations = []
         
+        # Use provided thresholds or defaults
+        if thresholds is None:
+            thresholds = HealthThresholds()
+        
         # Check snapshot count
-        if metrics.total_snapshots >= self.SNAPSHOT_CRITICAL_THRESHOLD:
+        if metrics.total_snapshots >= thresholds.snapshot_critical_threshold:
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.EXPIRE_SNAPSHOTS,
                     priority="high",
-                    reason=f"Table has {metrics.total_snapshots} snapshots (threshold: {self.SNAPSHOT_CRITICAL_THRESHOLD})",
+                    reason=f"Table has {metrics.total_snapshots} snapshots (threshold: {thresholds.snapshot_critical_threshold})",
                     estimated_impact=f"Will remove old snapshots and free up metadata storage",
                     command_example=f"table.expire_snapshots(older_than='30 days ago')",
                 )
             )
-        elif metrics.total_snapshots >= self.SNAPSHOT_WARNING_THRESHOLD:
+        elif metrics.total_snapshots >= thresholds.snapshot_warning_threshold:
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.EXPIRE_SNAPSHOTS,
                     priority="medium",
-                    reason=f"Table has {metrics.total_snapshots} snapshots (threshold: {self.SNAPSHOT_WARNING_THRESHOLD})",
+                    reason=f"Table has {metrics.total_snapshots} snapshots (threshold: {thresholds.snapshot_warning_threshold})",
                     estimated_impact=f"Will remove old snapshots and free up metadata storage",
                     command_example=f"table.expire_snapshots(older_than='30 days ago')",
                 )
@@ -313,82 +336,82 @@ class HealthService:
         # Check snapshot age
         if (
             metrics.oldest_snapshot_age_days
-            and metrics.oldest_snapshot_age_days >= self.SNAPSHOT_AGE_CRITICAL_DAYS
+            and metrics.oldest_snapshot_age_days >= thresholds.snapshot_age_critical_days
         ):
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.EXPIRE_SNAPSHOTS,
                     priority="high",
-                    reason=f"Oldest snapshot is {metrics.oldest_snapshot_age_days:.0f} days old (threshold: {self.SNAPSHOT_AGE_CRITICAL_DAYS})",
+                    reason=f"Oldest snapshot is {metrics.oldest_snapshot_age_days:.0f} days old (threshold: {thresholds.snapshot_age_critical_days})",
                     estimated_impact="Remove very old snapshots that are likely not needed",
                     command_example=f"table.expire_snapshots(older_than='90 days ago')",
                 )
             )
         elif (
             metrics.oldest_snapshot_age_days
-            and metrics.oldest_snapshot_age_days >= self.SNAPSHOT_AGE_WARNING_DAYS
+            and metrics.oldest_snapshot_age_days >= thresholds.snapshot_age_warning_days
         ):
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.EXPIRE_SNAPSHOTS,
                     priority="medium",
-                    reason=f"Oldest snapshot is {metrics.oldest_snapshot_age_days:.0f} days old (threshold: {self.SNAPSHOT_AGE_WARNING_DAYS})",
+                    reason=f"Oldest snapshot is {metrics.oldest_snapshot_age_days:.0f} days old (threshold: {thresholds.snapshot_age_warning_days})",
                     estimated_impact="Remove old snapshots to reduce metadata overhead",
                     command_example=f"table.expire_snapshots(older_than='30 days ago')",
                 )
             )
         
         # Check small files
-        if metrics.small_files_count >= self.SMALL_FILE_CRITICAL_THRESHOLD:
+        if metrics.small_files_count >= thresholds.small_file_critical_threshold:
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.COMPACT_DATA_FILES,
                     priority="high",
-                    reason=f"Table has {metrics.small_files_count} small files (< {self.SMALL_FILE_SIZE_MB}MB each, threshold: {self.SMALL_FILE_CRITICAL_THRESHOLD})",
+                    reason=f"Table has {metrics.small_files_count} small files (< {thresholds.small_file_size_mb}MB each, threshold: {thresholds.small_file_critical_threshold})",
                     estimated_impact=f"Combine small files into larger ones, improve query performance by ~30-50%",
                     command_example=f"table.rewrite_data_files(target_size_bytes=512*1024*1024)",
                 )
             )
-        elif metrics.small_files_count >= self.SMALL_FILE_WARNING_THRESHOLD:
+        elif metrics.small_files_count >= thresholds.small_file_warning_threshold:
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.COMPACT_DATA_FILES,
                     priority="medium",
-                    reason=f"Table has {metrics.small_files_count} small files (< {self.SMALL_FILE_SIZE_MB}MB each, threshold: {self.SMALL_FILE_WARNING_THRESHOLD})",
+                    reason=f"Table has {metrics.small_files_count} small files (< {thresholds.small_file_size_mb}MB each, threshold: {thresholds.small_file_warning_threshold})",
                     estimated_impact=f"Combine small files into larger ones, improve query performance",
                     command_example=f"table.rewrite_data_files(target_size_bytes=512*1024*1024)",
                 )
             )
         
         # Check delete files
-        if metrics.total_delete_files >= self.DELETE_FILE_CRITICAL_THRESHOLD:
+        if metrics.total_delete_files >= thresholds.delete_file_critical_threshold:
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.REWRITE_DELETE_FILES,
                     priority="high",
-                    reason=f"Table has {metrics.total_delete_files} delete files (threshold: {self.DELETE_FILE_CRITICAL_THRESHOLD})",
+                    reason=f"Table has {metrics.total_delete_files} delete files (threshold: {thresholds.delete_file_critical_threshold})",
                     estimated_impact="Merge delete files with data files, improve read performance significantly",
                     command_example=f"table.rewrite_data_files()",
                 )
             )
-        elif metrics.total_delete_files >= self.DELETE_FILE_WARNING_THRESHOLD:
+        elif metrics.total_delete_files >= thresholds.delete_file_warning_threshold:
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.REWRITE_DELETE_FILES,
                     priority="medium",
-                    reason=f"Table has {metrics.total_delete_files} delete files (threshold: {self.DELETE_FILE_WARNING_THRESHOLD})",
+                    reason=f"Table has {metrics.total_delete_files} delete files (threshold: {thresholds.delete_file_warning_threshold})",
                     estimated_impact="Merge delete files with data files, improve read performance",
                     command_example=f"table.rewrite_data_files()",
                 )
             )
         
         # Check small manifests
-        if metrics.small_manifests_count >= self.SMALL_MANIFEST_WARNING_THRESHOLD:
+        if metrics.small_manifests_count >= thresholds.small_manifest_warning_threshold:
             recommendations.append(
                 MaintenanceRecommendation(
                     type=MaintenanceType.REWRITE_MANIFESTS,
                     priority="medium",
-                    reason=f"Table has {metrics.small_manifests_count} small manifests (threshold: {self.SMALL_MANIFEST_WARNING_THRESHOLD})",
+                    reason=f"Table has {metrics.small_manifests_count} small manifests (threshold: {thresholds.small_manifest_warning_threshold})",
                     estimated_impact="Consolidate manifest files, reduce planning overhead",
                     command_example=f"table.rewrite_manifests()",
                 )

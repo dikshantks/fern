@@ -26,19 +26,19 @@ export const snapshotKeys = {
     ['snapshots', catalog, namespace, table, 'graph'] as const,
   details: (catalog: string, namespace: string, table: string) =>
     ['snapshots', catalog, namespace, table, 'details'] as const,
-  detail: (catalog: string, namespace: string, table: string, snapshotId: number) =>
+  detail: (catalog: string, namespace: string, table: string, snapshotId: string) =>
     ['snapshots', catalog, namespace, table, snapshotId] as const,
 };
 
 export const manifestKeys = {
-  list: (catalog: string, namespace: string, table: string, snapshotId: number) =>
+  list: (catalog: string, namespace: string, table: string, snapshotId: string) =>
     ['manifests', catalog, namespace, table, snapshotId] as const,
   entries: (catalog: string, namespace: string, table: string, manifestPath: string) =>
     ['manifests', catalog, namespace, table, 'entries', manifestPath] as const,
 };
 
 export const dataFileKeys = {
-  list: (catalog: string, namespace: string, table: string, snapshotId: number) =>
+  list: (catalog: string, namespace: string, table: string, snapshotId: string) =>
     ['dataFiles', catalog, namespace, table, snapshotId] as const,
   inspection: (catalog: string, namespace: string, table: string, filePath: string) =>
     ['dataFiles', catalog, namespace, table, 'inspect', filePath] as const,
@@ -49,7 +49,7 @@ export const dataFileKeys = {
 export const statisticsKeys = {
   files: (catalog: string, namespace: string, table: string) =>
     ['statistics', catalog, namespace, table, 'files'] as const,
-  snapshot: (catalog: string, namespace: string, table: string, snapshotId: number) =>
+  snapshot: (catalog: string, namespace: string, table: string, snapshotId: string) =>
     ['statistics', catalog, namespace, table, snapshotId] as const,
 };
 
@@ -111,7 +111,7 @@ export function useSnapshot(
   catalog: string,
   namespace: string,
   table: string,
-  snapshotId: number
+  snapshotId: string
 ) {
   return useQuery({
     queryKey: snapshotKeys.detail(catalog, namespace, table, snapshotId),
@@ -124,8 +124,8 @@ export function useSnapshotComparison(
   catalog: string,
   namespace: string,
   table: string,
-  snapshot1: number,
-  snapshot2: number
+  snapshot1: string,
+  snapshot2: string
 ) {
   return useQuery({
     queryKey: ['snapshots', catalog, namespace, table, 'compare', snapshot1, snapshot2],
@@ -139,7 +139,7 @@ export function useManifestList(
   catalog: string,
   namespace: string,
   table: string,
-  snapshotId: number
+  snapshotId: string
 ) {
   return useQuery({
     queryKey: manifestKeys.list(catalog, namespace, table, snapshotId),
@@ -167,7 +167,7 @@ export function useDataFiles(
   catalog: string,
   namespace: string,
   table: string,
-  snapshotId: number,
+  snapshotId: string,
   options?: {
     limit?: number;
     minSizeBytes?: number;
@@ -222,7 +222,7 @@ export function useTableStatistics(
   catalog: string,
   namespace: string,
   table: string,
-  snapshotId: number
+  snapshotId: string
 ) {
   return useQuery({
     queryKey: statisticsKeys.snapshot(catalog, namespace, table, snapshotId),

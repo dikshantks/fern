@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class BlobMetadata(BaseModel):
@@ -17,6 +17,11 @@ class BlobMetadata(BaseModel):
     compression_codec: Optional[str] = Field(None, description="Compression codec")
     properties: dict[str, str] = Field(default_factory=dict, description="Additional properties")
 
+    @field_serializer('snapshot_id', 'sequence_number')
+    def serialize_large_int(self, value: int) -> str:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        return str(value)
+
 
 class PuffinFileInfo(BaseModel):
     """Information about a Puffin statistics file."""
@@ -26,6 +31,11 @@ class PuffinFileInfo(BaseModel):
     file_size_bytes: int = Field(..., description="File size in bytes")
     blob_count: int = Field(0, description="Number of blobs in file")
     blobs: list[BlobMetadata] = Field(default_factory=list, description="Blob metadata")
+
+    @field_serializer('snapshot_id')
+    def serialize_snapshot_id(self, value: int) -> str:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        return str(value)
 
 
 class ColumnStatistics(BaseModel):
@@ -53,3 +63,8 @@ class TableStatistics(BaseModel):
     )
     total_record_count: Optional[int] = Field(None, description="Total records")
     file_count: Optional[int] = Field(None, description="Number of data files")
+
+    @field_serializer('snapshot_id')
+    def serialize_snapshot_id(self, value: int) -> str:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        return str(value)

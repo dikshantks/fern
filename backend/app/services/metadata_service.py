@@ -51,6 +51,17 @@ class MetadataService:
         """
         tables = []
         
+        # #region agent log
+        try:
+            import json, time
+            from pathlib import Path
+            _p = getattr(self.catalog, "properties", {})
+            _log = Path(__file__).resolve().parent.parent.parent / "debug-a776e8.log"
+            with open(_log, "a") as _f:
+                _f.write(json.dumps({"sessionId":"a776e8","location":"metadata_service.py:list_tables_start","message":"catalog.properties at list_tables","data":{"catalog_name":self.catalog_name,"has_s3_region":"s3.region" in _p,"has_s3_access_key":"s3.access-key-id" in _p,"has_s3_secret":"s3.secret-access-key" in _p},"timestamp":int(time.time()*1000),"hypothesisId":"H2,H3"}) + "\n")
+        except Exception: pass
+        # #endregion
+        
         for namespace in self.catalog.list_namespaces():
             namespace_str = ".".join(namespace)
             
@@ -69,8 +80,36 @@ class MetadataService:
                         format_version=metadata.format_version,
                     ))
                 except Exception as e:
-                    # Log error but continue
-                    print(f"Error loading table {table_id}: {e}")
+                    # Log error with more context
+                    error_msg = str(e)
+                    # #region agent log
+                    try:
+                        import json, time
+                        from pathlib import Path
+                        _p = getattr(self.catalog, "properties", {})
+                        _path = error_msg.split("path ")[-1].strip() if " path " in error_msg else error_msg[:200]
+                        _meta_loc = None
+                        if hasattr(self.catalog, "glue") and len(table_id) >= 2:
+                            try:
+                                _gt = self.catalog.glue.get_table(DatabaseName=table_id[0], Name=table_id[1])
+                                _meta_loc = _gt.get("Table", {}).get("Parameters", {}).get("metadata_location")
+                            except Exception: pass
+                        _log = Path(__file__).resolve().parent.parent.parent / "debug-a776e8.log"
+                        with open(_log, "a") as _f:
+                            _f.write(json.dumps({"sessionId":"a776e8","location":"metadata_service.py:load_table_except","message":"load_table failed","data":{"table_id":list(table_id),"error_msg":error_msg[:500],"extracted_path":_path,"metadata_location_from_glue":_meta_loc,"has_s3_region":"s3.region" in _p,"has_s3_access_key":"s3.access-key-id" in _p,"is_access_denied":"ACCESS_DENIED" in error_msg,"is_empty_path":"Empty path component" in error_msg},"timestamp":int(time.time()*1000),"hypothesisId":"H5,H6"}) + "\n")
+                    except Exception: pass
+                    # #endregion
+                    if "ACCESS_DENIED" in error_msg or "403" in error_msg:
+                        print(f"⚠️  ACCESS DENIED for table {table_id}")
+                        print(f"   Possible causes:")
+                        print(f"   1. Missing S3 credentials: Add 's3.access-key-id' and 's3.secret-access-key'")
+                        print(f"   2. Missing S3 region: Add 's3.region' (e.g., 'us-east-1')")
+                        print(f"   3. IAM permissions: Ensure s3:GetObject on bucket {error_msg.split('bucket')[1].split(':')[0] if 'bucket' in error_msg else 'N/A'}")
+                    elif "Empty path component" in error_msg:
+                        print(f"⚠️  Invalid table location for {table_id}: {error_msg}")
+                        print(f"   Table has malformed location with double slashes (//). This is a data quality issue in Glue.")
+                    else:
+                        print(f"Error loading table {table_id}: {e}")
                     continue
         
         return tables

@@ -88,6 +88,28 @@ class MaintenanceFilter(BaseModel):
     needs_maintenance: Optional[list[MaintenanceType]] = None
 
 
+class HealthThresholds(BaseModel):
+    """Configurable thresholds for health analysis."""
+    # Snapshot thresholds
+    snapshot_warning_threshold: int = Field(50, ge=1, description="Warning threshold for snapshot count")
+    snapshot_critical_threshold: int = Field(100, ge=1, description="Critical threshold for snapshot count")
+    snapshot_age_warning_days: int = Field(30, ge=1, description="Warning threshold for oldest snapshot age in days")
+    snapshot_age_critical_days: int = Field(90, ge=1, description="Critical threshold for oldest snapshot age in days")
+    
+    # File size thresholds
+    small_file_size_mb: int = Field(128, ge=1, description="Size threshold (MB) below which files are considered small")
+    small_file_warning_threshold: int = Field(100, ge=0, description="Warning threshold for number of small files")
+    small_file_critical_threshold: int = Field(500, ge=0, description="Critical threshold for number of small files")
+    
+    # Delete file thresholds
+    delete_file_warning_threshold: int = Field(10, ge=0, description="Warning threshold for number of delete files")
+    delete_file_critical_threshold: int = Field(50, ge=0, description="Critical threshold for number of delete files")
+    
+    # Manifest thresholds
+    small_manifest_file_count: int = Field(10, ge=1, description="Number of files below which a manifest is considered small")
+    small_manifest_warning_threshold: int = Field(20, ge=0, description="Warning threshold for number of small manifests")
+
+
 class TableHealthSummary(BaseModel):
     """Summary of table health across catalog."""
     total_tables: int

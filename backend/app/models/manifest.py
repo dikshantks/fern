@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class ManifestInfo(BaseModel):
@@ -22,6 +22,11 @@ class ManifestInfo(BaseModel):
     existing_rows_count: int = Field(0, description="Number of existing rows")
     deleted_rows_count: int = Field(0, description="Number of rows deleted")
     partitions: list[dict[str, Any]] = Field(default_factory=list, description="Partition summaries")
+
+    @field_serializer('sequence_number', 'min_sequence_number', 'added_snapshot_id')
+    def serialize_large_int(self, value: int) -> str:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        return str(value)
 
 
 class ManifestEntry(BaseModel):
@@ -51,6 +56,13 @@ class ManifestEntry(BaseModel):
     split_offsets: Optional[list[int]] = Field(None, description="Split offsets")
     sort_order_id: Optional[int] = Field(None, description="Sort order ID")
 
+    @field_serializer('snapshot_id', 'sequence_number', 'file_sequence_number')
+    def serialize_large_int(self, value: Optional[int]) -> Optional[str]:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        if value is None:
+            return None
+        return str(value)
+
 
 class ManifestInfoWithEntries(ManifestInfo):
     """Manifest info with embedded data/delete file entries."""
@@ -73,6 +85,11 @@ class SnapshotDetails(BaseModel):
     total_records: int = Field(0, description="Total number of records")
     total_size_bytes: int = Field(0, description="Total size in bytes")
 
+    @field_serializer('snapshot_id')
+    def serialize_snapshot_id(self, value: int) -> str:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        return str(value)
+
 
 class ManifestListInfo(BaseModel):
     """Information about a manifest list for a snapshot."""
@@ -84,3 +101,8 @@ class ManifestListInfo(BaseModel):
     total_delete_files: int = Field(0, description="Total number of delete files")
     total_records: int = Field(0, description="Total number of records")
     total_size_bytes: int = Field(0, description="Total size in bytes")
+
+    @field_serializer('snapshot_id')
+    def serialize_snapshot_id(self, value: int) -> str:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        return str(value)

@@ -36,11 +36,20 @@ class CatalogConfig(BaseModel):
                 },
             },
             {
-                "name": "prod-glue",
+                "name": "prod-glue-profile",
                 "type": "glue",
                 "properties": {
                     "region_name": "us-east-1",
                     "profile_name": "production",
+                },
+            },
+            {
+                "name": "prod-glue-keys",
+                "type": "glue",
+                "properties": {
+                    "region_name": "us-east-1",
+                    "aws_access_key_id": "AKIA...",
+                    "aws_secret_access_key": "...",
                 },
             },
         ]

@@ -105,7 +105,7 @@ export const snapshotApi = {
     catalog: string,
     namespace: string,
     table: string,
-    snapshotId: number
+    snapshotId: string
   ): Promise<SnapshotInfo> => {
     const response = await apiClient.get<SnapshotInfo>(
       `/api/tables/${namespace}/${table}/snapshots/${snapshotId}`,
@@ -118,8 +118,8 @@ export const snapshotApi = {
     catalog: string,
     namespace: string,
     table: string,
-    snapshot1: number,
-    snapshot2: number
+    snapshot1: string,
+    snapshot2: string
   ): Promise<SnapshotComparison> => {
     const response = await apiClient.post<SnapshotComparison>(
       `/api/tables/${namespace}/${table}/snapshots/compare`,
@@ -149,7 +149,7 @@ export const manifestApi = {
     catalog: string,
     namespace: string,
     table: string,
-    snapshotId: number
+    snapshotId: string
   ): Promise<ManifestListInfo> => {
     const response = await apiClient.get<ManifestListInfo>(
       `/api/tables/${namespace}/${table}/snapshots/${snapshotId}/manifests`,
@@ -179,7 +179,7 @@ export const dataFileApi = {
     catalog: string,
     namespace: string,
     table: string,
-    snapshotId: number,
+    snapshotId: string,
     options?: {
       limit?: number;
       minSizeBytes?: number;
@@ -248,7 +248,7 @@ export const statisticsApi = {
     catalog: string,
     namespace: string,
     table: string,
-    snapshotId: number
+    snapshotId: string
   ): Promise<TableStatistics> => {
     const response = await apiClient.get<TableStatistics>(
       `/api/tables/${namespace}/${table}/statistics/${snapshotId}`,
@@ -271,10 +271,30 @@ export interface TableHealthSummary {
   total_wasted_storage_gb: number;
 }
 
+export interface HealthThresholds {
+  snapshot_warning_threshold?: number;
+  snapshot_critical_threshold?: number;
+  snapshot_age_warning_days?: number;
+  snapshot_age_critical_days?: number;
+  small_file_size_mb?: number;
+  small_file_warning_threshold?: number;
+  small_file_critical_threshold?: number;
+  delete_file_warning_threshold?: number;
+  delete_file_critical_threshold?: number;
+  small_manifest_file_count?: number;
+  small_manifest_warning_threshold?: number;
+}
+
 export const healthApi = {
-  getSummary: async (catalog: string): Promise<TableHealthSummary> => {
+  getSummary: async (
+    catalog: string,
+    thresholds?: HealthThresholds
+  ): Promise<TableHealthSummary> => {
     const response = await apiClient.get<TableHealthSummary>('/api/health/summary', {
-      params: { catalog },
+      params: {
+        catalog,
+        ...thresholds,
+      },
     });
     return response.data;
   },

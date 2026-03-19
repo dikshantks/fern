@@ -14,7 +14,7 @@ interface DataFileTableProps {
   catalog: string;
   namespace: string;
   table: string;
-  snapshotId: number;
+  snapshotId: string;
   onFileSelect?: (file: DataFileInfo) => void;
 }
 

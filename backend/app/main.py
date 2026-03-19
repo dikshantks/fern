@@ -8,7 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.models import CatalogType
-from app.routers import catalogs, tables, snapshots, manifests, data_files, puffin, analytics, health
+from app.routers import (
+    catalogs,
+    tables,
+    snapshots,
+    manifests,
+    data_files,
+    puffin,
+    analytics,
+    health,
+    spark_optimization,
+)
 from app.services import catalog_service
 
 
@@ -74,6 +84,7 @@ app.include_router(data_files.router, prefix="/api/tables", tags=["Data Files"])
 app.include_router(puffin.router, prefix="/api/tables", tags=["Statistics"])
 app.include_router(analytics.router, prefix="/api/tables", tags=["Analytics"])
 app.include_router(health.router, prefix="/api/health", tags=["Health"])
+app.include_router(spark_optimization.router, prefix="/api/optimization", tags=["optimization"])
 
 
 @app.get("/")

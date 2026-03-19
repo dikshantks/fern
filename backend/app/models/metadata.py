@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class FieldInfo(BaseModel):
@@ -24,6 +24,11 @@ class SchemaInfo(BaseModel):
         default_factory=list,
         description="Identifier field IDs",
     )
+
+    @field_serializer('schema_id')
+    def serialize_schema_id(self, value: int) -> str:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        return str(value)
 
 
 class PartitionFieldInfo(BaseModel):
@@ -69,6 +74,13 @@ class TableInfo(BaseModel):
     current_snapshot_id: Optional[int] = Field(None, description="Current snapshot ID")
     format_version: int = Field(1, description="Iceberg format version")
 
+    @field_serializer('current_snapshot_id')
+    def serialize_current_snapshot_id(self, value: Optional[int]) -> Optional[str]:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        if value is None:
+            return None
+        return str(value)
+
 
 class TableMetadata(BaseModel):
     """Full metadata for an Iceberg table."""
@@ -109,3 +121,10 @@ class TableMetadata(BaseModel):
         None,
         description="Raw metadata.json content",
     )
+
+    @field_serializer('current_snapshot_id', 'current_schema_id')
+    def serialize_large_int(self, value: Optional[int]) -> Optional[str]:
+        """Serialize large integers as strings to prevent precision loss in JavaScript."""
+        if value is None:
+            return None
+        return str(value)

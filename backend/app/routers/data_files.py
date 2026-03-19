@@ -34,7 +34,7 @@ async def get_data_files(
     try:
         return data_file_service.get_data_files(
             namespace=namespace,
-            table=table,
+            table_name=table,
             snapshot_id=snapshot_id,
             limit=limit,
             min_size_bytes=min_size_bytes,

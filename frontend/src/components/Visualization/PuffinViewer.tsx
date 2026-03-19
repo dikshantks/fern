@@ -6,7 +6,7 @@ interface PuffinViewerProps {
   catalog: string;
   namespace: string;
   table: string;
-  snapshotId?: number;
+  snapshotId?: string;
 }
 
 interface StatCardProps {

@@ -15,7 +15,7 @@ interface ManifestTreeProps {
   catalog: string;
   namespace: string;
   table: string;
-  snapshotId: number;
+  snapshotId: string;
   onFileSelect?: (file: ManifestEntry) => void;
 }
 
