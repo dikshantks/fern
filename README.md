@@ -12,6 +12,8 @@ A web application for visualizing Apache Iceberg table metadata, snapshots, mani
 - **Storage Analytics**: Charts showing file size distribution, format breakdown, and partition stats
 - **Operation Timeline**: History of DML operations with record/file counts
 
+
+
 ## Architecture
 
 ```
